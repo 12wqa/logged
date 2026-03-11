@@ -81,6 +81,7 @@
     background: #161b22;
     padding: 10px 16px;
     display: flex;
+    flex-wrap: wrap;
     justify-content: space-between;
     align-items: center;
     cursor: pointer;
@@ -156,6 +157,18 @@
     margin: 2px 8px;
   }
   .copy-btn:hover { background: #30363d; color: #c9d1d9; }
+  .resume-btn {
+    float: right;
+    padding: 2px 8px;
+    background: #1f6feb;
+    border: 1px solid #388bfd;
+    border-radius: 4px;
+    color: white;
+    font-size: 11px;
+    cursor: pointer;
+    margin: 2px 4px;
+  }
+  .resume-btn:hover { background: #388bfd; }
   .empty {
     text-align: center;
     padding: 60px 20px;
@@ -287,15 +300,19 @@ function doSearch() {
         var header = document.createElement('div');
         header.className = 'session-header';
         header.onclick = function() { toggleSession(this); };
-        header.innerHTML = '<span class="session-project">' + esc(session.project) + '</span>'
-          + '<span class="session-meta">' + session.matchCount + ' matches | ' + dateStr + ' | ' + session.sessionId + '</span>';
+        header.innerHTML = '<span class="session-project">' + esc(session.project) + ' — ' + session.fullSessionId + '</span>'
+          + '<span class="session-meta">' + session.matchCount + ' matches | ' + dateStr + '</span>'
+          + '<div style="font-size:11px;color:#8b949e;width:100%;margin-top:4px;word-break:break-all;">' + esc(session.sessionPath) + '</div>';
         group.appendChild(header);
 
         var infoDiv = document.createElement('div');
         infoDiv.className = 'session-info';
-        var resumeCmd = 'claude --resume ' + esc(session.fullSessionId);
+        var infoResumeCmd = session.cwd
+          ? 'cd "' + session.cwd + '"; claude --resume ' + session.fullSessionId
+          : 'claude --resume ' + session.fullSessionId;
         infoDiv.innerHTML = '<div class="session-path">Path: ' + esc(session.sessionPath) + '</div>'
-          + '<div class="resume-cmd" onclick="navigator.clipboard.writeText(\'' + session.fullSessionId + '\').then(function(){this.textContent=\'Copied!\'}.bind(this))" title="Click to copy session ID">Resume: ' + resumeCmd + '</div>';
+          + (session.cwd ? '<div class="session-path">Working dir: ' + esc(session.cwd) + '</div>' : '')
+          + '<div class="resume-cmd" onclick="navigator.clipboard.writeText(\'' + infoResumeCmd.replace(/'/g, "\\'") + '\').then(function(){this.textContent=\'Copied!\'}.bind(this))" title="Click to copy">Resume: ' + esc(infoResumeCmd) + '</div>';
         group.appendChild(infoDiv);
 
         var matchesDiv = document.createElement('div');
@@ -322,6 +339,22 @@ function doSearch() {
             mg.appendChild(div);
             copyText += line.type + ': ' + line.text + '\n';
           }
+
+          var resumeBtn = document.createElement('button');
+          resumeBtn.className = 'resume-btn';
+          resumeBtn.textContent = 'Resume';
+          var resumeCmd = session.cwd
+            ? 'cd "' + session.cwd + '"; claude --resume ' + session.fullSessionId
+            : 'claude --resume ' + session.fullSessionId;
+          resumeBtn.title = 'Copy: ' + resumeCmd;
+          (function(btn, cmd) {
+            btn.onclick = function() {
+              navigator.clipboard.writeText(cmd);
+              btn.textContent = 'Copied!';
+              setTimeout(function() { btn.textContent = 'Resume'; }, 1500);
+            };
+          })(resumeBtn, resumeCmd);
+          mg.prepend(resumeBtn);
 
           var copyBtn = document.createElement('button');
           copyBtn.className = 'copy-btn';

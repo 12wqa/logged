@@ -56,11 +56,12 @@ function findSessions(maxAgeDays) {
 function parseSession(filepath) {
   const entries = [];
   let turnNumber = 0;
+  let cwd = null;
   let lines;
   try {
     lines = fs.readFileSync(filepath, 'utf8').split('\n').filter(Boolean);
   } catch {
-    return entries;
+    return { entries, cwd };
   }
 
   for (const line of lines) {
@@ -71,6 +72,7 @@ function parseSession(filepath) {
 
       if (obj.type === 'user' && obj.userType === 'external') {
         turnNumber++;
+        if (!cwd && obj.cwd) cwd = obj.cwd;
         const content = typeof obj.message?.content === 'string' ? obj.message.content : null;
         if (content) {
           entries.push({ turn: turnNumber, time: ts, type: 'USER', text: content });
@@ -86,7 +88,7 @@ function parseSession(filepath) {
     } catch {}
   }
 
-  return entries;
+  return { entries, cwd };
 }
 
 function search(query, maxDays) {
@@ -95,7 +97,8 @@ function search(query, maxDays) {
   const results = [];
 
   for (const session of sessions) {
-    const entries = parseSession(session.path);
+    const parsed = parseSession(session.path);
+    const entries = parsed.entries;
     const matches = [];
 
     for (let i = 0; i < entries.length; i++) {
@@ -119,6 +122,7 @@ function search(query, maxDays) {
         sessionId: session.sessionId,
         fullSessionId: path.basename(session.path, '.jsonl'),
         sessionPath: session.path,
+        cwd: parsed.cwd,
         modified: session.modified,
         matchCount: matches.length,
         matches: matches.slice(0, 50)
