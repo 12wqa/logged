@@ -24,7 +24,14 @@ const TRIGGER = process.env.LOGGED_TRIGGER || 'auto';
 
 const SESSION_MARKER = '\n<!-- SESSION-STATE-AUTO -->';
 
-function findMemoryMd() {
+function findMemoryMd(sessionFile) {
+  if (sessionFile) {
+    // Derive MEMORY.md from the session file's project directory
+    const projectDir = path.dirname(sessionFile);
+    const memFile = path.join(projectDir, 'memory', 'MEMORY.md');
+    try { fs.statSync(memFile); return memFile; } catch {}
+  }
+  // Fallback: find newest (for manual triggers without a session)
   const projectsDir = path.join(CLAUDE_DIR, 'projects');
   let newest = null;
   let newestTime = 0;
@@ -44,8 +51,8 @@ function findMemoryMd() {
   return newest;
 }
 
-function updateMemoryMd(indexOutput, contextPct, trigger) {
-  const memFile = findMemoryMd();
+function updateMemoryMd(indexOutput, contextPct, trigger, sessionFile) {
+  const memFile = findMemoryMd(sessionFile);
   if (!memFile) return;
 
   try {
@@ -178,7 +185,7 @@ if (pct - state.lastIndexPct >= INDEX_INTERVAL_PCT) {
     const index = runIndexer(session, 15);
     if (index) {
       writeReloadFile(index, pct, TRIGGER);
-      updateMemoryMd(index, pct, TRIGGER);
+      updateMemoryMd(index, pct, TRIGGER, session);
 
       try {
         fs.mkdirSync(INDEX_LOG_DIR, { recursive: true });
