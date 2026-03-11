@@ -151,7 +151,7 @@
 </head>
 <body>
 <div class="header">
-  <h1>Logged</h1>
+  <h1>Logged <span id="server-status" style="font-size: 12px; font-weight: 400; padding: 3px 10px; border-radius: 4px; margin-left: 12px;"></span></h1>
   <div class="search-row">
     <input class="search-input" id="q" type="text" placeholder="Search all conversations..." autofocus>
     <select class="days-select" id="days">
@@ -175,6 +175,24 @@
 </div>
 
 <script>
+// Server status check — uses text labels not colours for accessibility
+function checkServer() {
+  var el = document.getElementById('server-status');
+  fetch('/api/search?q=_ping')
+    .then(function() {
+      el.textContent = 'SERVER RUNNING';
+      el.style.background = '#1f6feb';
+      el.style.color = 'white';
+    })
+    .catch(function() {
+      el.textContent = 'SERVER STOPPED';
+      el.style.background = '#da3633';
+      el.style.color = 'white';
+    });
+}
+checkServer();
+setInterval(checkServer, 10000);
+
 document.getElementById('q').addEventListener('keydown', function(e) {
   if (e.key === 'Enter') doSearch();
 });
