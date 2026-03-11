@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Logged — Conversation Search</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: #0d1117;
+    color: #c9d1d9;
+    min-height: 100vh;
+  }
+  .header {
+    background: #161b22;
+    border-bottom: 1px solid #30363d;
+    padding: 16px 24px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .header h1 {
+    font-size: 18px;
+    color: #58a6ff;
+    margin-bottom: 12px;
+    font-weight: 600;
+  }
+  .search-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .search-input {
+    flex: 1;
+    padding: 10px 14px;
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    color: #c9d1d9;
+    font-size: 15px;
+    outline: none;
+  }
+  .search-input:focus { border-color: #58a6ff; }
+  .search-input::placeholder { color: #484f58; }
+  .days-select {
+    padding: 10px 12px;
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    color: #c9d1d9;
+    font-size: 14px;
+    outline: none;
+    cursor: pointer;
+  }
+  .search-btn {
+    padding: 10px 20px;
+    background: #238636;
+    border: none;
+    border-radius: 6px;
+    color: white;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .search-btn:hover { background: #2ea043; }
+  .status {
+    padding: 8px 24px;
+    color: #8b949e;
+    font-size: 13px;
+    border-bottom: 1px solid #21262d;
+  }
+  .results { padding: 16px 24px; }
+  .session-group {
+    margin-bottom: 24px;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .session-header {
+    background: #161b22;
+    padding: 10px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+  }
+  .session-header:hover { background: #1c2128; }
+  .session-project {
+    font-weight: 600;
+    color: #d2a8ff;
+    font-size: 14px;
+  }
+  .session-meta {
+    font-size: 12px;
+    color: #8b949e;
+  }
+  .session-matches { padding: 0; }
+  .match-group {
+    border-top: 1px solid #21262d;
+    padding: 8px 0;
+  }
+  .match-line {
+    padding: 4px 16px;
+    font-size: 13px;
+    line-height: 1.5;
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+  }
+  .match-line.is-match { background: #1a1e2a; }
+  .match-time {
+    color: #484f58;
+    font-size: 12px;
+    margin-right: 8px;
+  }
+  .match-type {
+    display: inline-block;
+    width: 50px;
+    font-weight: 600;
+    font-size: 12px;
+  }
+  .match-type.USER { color: #d29922; }
+  .match-type.CLAUDE { color: #58a6ff; }
+  .match-text { color: #c9d1d9; }
+  .match-text mark {
+    background: #6e40c9;
+    color: white;
+    padding: 1px 3px;
+    border-radius: 3px;
+    font-weight: 600;
+  }
+  .copy-btn {
+    float: right;
+    padding: 2px 8px;
+    background: #21262d;
+    border: 1px solid #30363d;
+    border-radius: 4px;
+    color: #8b949e;
+    font-size: 11px;
+    cursor: pointer;
+    margin: 2px 8px;
+  }
+  .copy-btn:hover { background: #30363d; color: #c9d1d9; }
+  .empty {
+    text-align: center;
+    padding: 60px 20px;
+    color: #484f58;
+  }
+  .empty h2 { font-size: 20px; margin-bottom: 8px; color: #8b949e; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>Logged</h1>
+  <div class="search-row">
+    <input class="search-input" id="q" type="text" placeholder="Search all conversations..." autofocus>
+    <select class="days-select" id="days">
+      <option value="">All time</option>
+      <option value="1">Today</option>
+      <option value="3">Last 3 days</option>
+      <option value="7">Last week</option>
+      <option value="14">Last 2 weeks</option>
+      <option value="30">Last month</option>
+    </select>
+    <button class="search-btn" onclick="doSearch()">Search</button>
+  </div>
+</div>
+<div class="status" id="status"></div>
+<div class="results" id="results">
+  <div class="empty">
+    <h2>Search your conversations</h2>
+    <p>Type a search term and hit Enter or click Search.</p>
+    <p style="margin-top: 12px">Every Claude Code conversation you've had with Claude Code is searchable here.</p>
+  </div>
+</div>
+
+<script>
+document.getElementById('q').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') doSearch();
+});
+
+function esc(s) {
+  var d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function highlightText(text, query) {
+  var escaped = esc(text);
+  // Simple case-insensitive split and rejoin with marks
+  var lower = escaped.toLowerCase();
+  var qLower = query.toLowerCase();
+  var result = '';
+  var pos = 0;
+  while (pos < lower.length) {
+    var idx = lower.indexOf(qLower, pos);
+    if (idx === -1) {
+      result += escaped.slice(pos);
+      break;
+    }
+    result += escaped.slice(pos, idx);
+    result += '<mark>' + escaped.slice(idx, idx + query.length) + '</mark>';
+    pos = idx + query.length;
+  }
+  return result;
+}
+
+function toggleSession(el) {
+  var matches = el.nextElementSibling;
+  matches.style.display = matches.style.display === 'none' ? 'block' : 'none';
+}
+
+function copyMatch(btn, text) {
+  navigator.clipboard.writeText(text);
+  btn.textContent = 'Copied!';
+  setTimeout(function() { btn.textContent = 'Copy'; }, 1500);
+}
+
+function doSearch() {
+  var q = document.getElementById('q').value.trim();
+  if (!q) return;
+  var days = document.getElementById('days').value;
+  var status = document.getElementById('status');
+  var results = document.getElementById('results');
+
+  status.textContent = 'Searching...';
+  results.innerHTML = '';
+
+  var url = '/api/search?q=' + encodeURIComponent(q);
+  if (days) url += '&days=' + days;
+
+  fetch(url)
+    .then(function(res) { return res.json(); })
+    .then(function(data) {
+      var total = 0;
+      for (var i = 0; i < data.length; i++) total += data[i].matchCount;
+      status.textContent = total + ' match' + (total !== 1 ? 'es' : '') + ' across ' + data.length + ' session(s)';
+
+      if (data.length === 0) {
+        results.innerHTML = '<div class="empty"><h2>No matches</h2><p>Try different keywords or expand the time range.</p></div>';
+        return;
+      }
+
+      for (var s = 0; s < data.length; s++) {
+        var session = data[s];
+        var group = document.createElement('div');
+        group.className = 'session-group';
+
+        var dateStr = new Date(session.modified).toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' });
+
+        var header = document.createElement('div');
+        header.className = 'session-header';
+        header.onclick = function() { toggleSession(this); };
+        header.innerHTML = '<span class="session-project">' + esc(session.project) + '</span>'
+          + '<span class="session-meta">' + session.matchCount + ' matches | ' + dateStr + ' | ' + session.sessionId + '</span>';
+        group.appendChild(header);
+
+        var matchesDiv = document.createElement('div');
+        matchesDiv.className = 'session-matches';
+
+        for (var m = 0; m < session.matches.length; m++) {
+          var match = session.matches[m];
+          var mg = document.createElement('div');
+          mg.className = 'match-group';
+
+          var copyText = '';
+          for (var c = 0; c < match.context.length; c++) {
+            var line = match.context[c];
+            var div = document.createElement('div');
+            div.className = 'match-line' + (line.isMatch ? ' is-match' : '');
+
+            var time = new Date(line.time).toLocaleTimeString('en-AU', { hour: '2-digit', minute: '2-digit', hour12: false });
+            var displayed = line.isMatch ? highlightText(line.text, q) : esc(line.text);
+
+            div.innerHTML = '<span class="match-time">' + time + '</span>'
+              + '<span class="match-type ' + line.type + '">' + line.type + '</span> '
+              + '<span class="match-text">' + displayed + '</span>';
+
+            mg.appendChild(div);
+            copyText += line.type + ': ' + line.text + '\n';
+          }
+
+          var copyBtn = document.createElement('button');
+          copyBtn.className = 'copy-btn';
+          copyBtn.textContent = 'Copy';
+          (function(btn, txt) {
+            btn.onclick = function() { copyMatch(btn, txt); };
+          })(copyBtn, copyText);
+          mg.prepend(copyBtn);
+
+          matchesDiv.appendChild(mg);
+        }
+
+        group.appendChild(matchesDiv);
+        results.appendChild(group);
+      }
+    })
+    .catch(function(e) {
+      status.textContent = 'Error: ' + e.message;
+    });
+}
+</script>
+</body>
+</html>
