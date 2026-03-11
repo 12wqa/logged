@@ -87,6 +87,21 @@
     user-select: none;
   }
   .session-header:hover { background: #1c2128; }
+  .session-info {
+    background: #0d1117;
+    padding: 6px 16px;
+    font-size: 12px;
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    border-top: 1px solid #21262d;
+    display: none;
+  }
+  .session-info .session-path { color: #8b949e; word-break: break-all; }
+  .session-info .resume-cmd {
+    color: #58a6ff;
+    margin-top: 4px;
+    cursor: pointer;
+  }
+  .session-info .resume-cmd:hover { text-decoration: underline; }
   .session-project {
     font-weight: 600;
     color: #d2a8ff;
@@ -224,8 +239,11 @@ function highlightText(text, query) {
 }
 
 function toggleSession(el) {
-  var matches = el.nextElementSibling;
-  matches.style.display = matches.style.display === 'none' ? 'block' : 'none';
+  var info = el.nextElementSibling;
+  var matches = info.nextElementSibling;
+  var show = matches.style.display === 'none' ? 'block' : 'none';
+  info.style.display = show;
+  matches.style.display = show;
 }
 
 function copyMatch(btn, text) {
@@ -272,6 +290,13 @@ function doSearch() {
         header.innerHTML = '<span class="session-project">' + esc(session.project) + '</span>'
           + '<span class="session-meta">' + session.matchCount + ' matches | ' + dateStr + ' | ' + session.sessionId + '</span>';
         group.appendChild(header);
+
+        var infoDiv = document.createElement('div');
+        infoDiv.className = 'session-info';
+        var resumeCmd = 'claude --resume ' + esc(session.fullSessionId);
+        infoDiv.innerHTML = '<div class="session-path">Path: ' + esc(session.sessionPath) + '</div>'
+          + '<div class="resume-cmd" onclick="navigator.clipboard.writeText(\'' + session.fullSessionId + '\').then(function(){this.textContent=\'Copied!\'}.bind(this))" title="Click to copy session ID">Resume: ' + resumeCmd + '</div>';
+        group.appendChild(infoDiv);
 
         var matchesDiv = document.createElement('div');
         matchesDiv.className = 'session-matches';

@@ -117,6 +117,8 @@ function search(query, maxDays) {
       results.push({
         project: session.project,
         sessionId: session.sessionId,
+        fullSessionId: path.basename(session.path, '.jsonl'),
+        sessionPath: session.path,
         modified: session.modified,
         matchCount: matches.length,
         matches: matches.slice(0, 50)
