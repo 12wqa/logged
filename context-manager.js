@@ -85,7 +85,6 @@ function updateMemoryMd(indexOutput, contextPct, trigger) {
 
 const INDEX_INTERVAL_PCT = 5;
 const INDEX_START_PCT = 15;
-
 function getContextPct() {
   try {
     const log = fs.readFileSync(STATUS_LOG, 'utf8');

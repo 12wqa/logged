@@ -35,6 +35,26 @@ if (cmd === 'viewer') {
   execSync('node "' + path.join(CLAUDE_DIR, 'test-context-system.js') + '"', { stdio: 'inherit' });
 
 } else {
+  // Check context level before snapshotting
+  const statusLog = path.join(CLAUDE_DIR, 'statusline.log');
+  let pct = 0;
+  try {
+    const log = fs.readFileSync(statusLog, 'utf8');
+    const match = log.match(/context_used:\s*([\d.]+)%/);
+    if (match) pct = parseFloat(match[1]);
+  } catch {}
+
+  if (pct < 15) {
+    console.log('Context too low (' + pct + '%) — nothing meaningful to snapshot yet.');
+    process.exit(0);
+  }
+
+  if (pct < 25) {
+    console.log('WARNING: Context is only ' + pct + '%. Snapshot will be thin.');
+    console.log('CONFIRM: Pass --force to snapshot anyway.');
+    if (!args.includes('--force')) process.exit(0);
+  }
+
   // Force snapshot — reset state and set trigger=manual
   fs.writeFileSync(path.join(CLAUDE_DIR, 'context-state.json'), '{"lastIndexPct":0}');
   execSync('node "' + path.join(CLAUDE_DIR, 'context-manager.js') + '"', {
