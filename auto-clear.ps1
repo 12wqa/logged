@@ -1,12 +1,12 @@
-param([int]$Delay = 3)
+param([int]$Delay = 3, [string]$TabName = "")
 
 $logFile = Join-Path $env:USERPROFILE ".claude\auto-clear.log"
 function Log($msg) { "$(Get-Date -Format 'HH:mm:ss') $msg" | Out-File -Append $logFile }
 "" | Out-File $logFile
 
-Log "Starting auto-clear (delay=${Delay}s)"
+Log "Starting auto-clear (delay=${Delay}s, TabName='$TabName')"
 
-# Step 1: Capture active tab before user switches away
+# Step 1: Find target tab — by name if provided, otherwise currently selected
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName System.Windows.Forms
 
@@ -22,29 +22,42 @@ $tabCondition = New-Object System.Windows.Automation.PropertyCondition(
 $tabs = $wtEl.FindAll([System.Windows.Automation.TreeScope]::Descendants, $tabCondition)
 Log "Found $($tabs.Count) tabs"
 
-# Find the currently selected tab
 $myTab = $null
 $myTabName = ""
-foreach ($tab in $tabs) {
-    try {
-        $selectPattern = $tab.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern)
-        if ($selectPattern.Current.IsSelected) {
+
+if ($TabName) {
+    # Find tab by name — logged.js captured this while the correct tab was active
+    foreach ($tab in $tabs) {
+        if ($tab.Current.Name -eq $TabName) {
             $myTab = $tab
-            $myTabName = $tab.Current.Name
-            Log "Active tab: '$myTabName'"
+            $myTabName = $TabName
+            Log "Found target tab by name: '$myTabName'"
             break
         }
-    } catch { Log "Tab check error: $_" }
+    }
+    if (-not $myTab) { Log "ERROR: Tab '$TabName' not found"; exit 1 }
+} else {
+    # Fallback: use currently selected tab
+    foreach ($tab in $tabs) {
+        try {
+            $selectPattern = $tab.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern)
+            if ($selectPattern.Current.IsSelected) {
+                $myTab = $tab
+                $myTabName = $tab.Current.Name
+                Log "Active tab (fallback): '$myTabName'"
+                break
+            }
+        } catch { Log "Tab check error: $_" }
+    }
+    if (-not $myTab) { Log "ERROR: No selected tab found"; exit 1 }
 }
-
-if (-not $myTab) { Log "ERROR: No selected tab found"; exit 1 }
 
 # Step 2: Wait for Claude to finish responding
 Log "Sleeping ${Delay}s..."
 Start-Sleep -Seconds $Delay
 
-# Step 3: Focus our tab (user may have switched away)
-Log "Re-focusing tab '$myTabName'"
+# Step 3: Select target tab (user may have switched to a different tab)
+Log "Selecting tab '$myTabName'"
 try {
     $selectPattern = $myTab.GetCurrentPattern([System.Windows.Automation.SelectionItemPattern]::Pattern)
     $selectPattern.Select()
@@ -120,13 +133,13 @@ Log "Foreground: $fg (match: $($fg -eq $wtProc.MainWindowHandle))"
 [System.Windows.Forms.Clipboard]::SetText("/")
 [System.Windows.Forms.SendKeys]::SendWait("^v")
 Log "Pasted /"
-Start-Sleep -Milliseconds 300
+Start-Sleep -Milliseconds 500
 
 # Paste clear — completes the command in autocomplete
 [System.Windows.Forms.Clipboard]::SetText("clear")
 [System.Windows.Forms.SendKeys]::SendWait("^v")
 Log "Pasted clear"
-Start-Sleep -Milliseconds 300
+Start-Sleep -Milliseconds 500
 
 # Ctrl+M = Enter — confirms the slash command
 [System.Windows.Forms.SendKeys]::SendWait("^m")

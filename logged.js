@@ -18,6 +18,13 @@ const CLAUDE_DIR = path.join(HOME, '.claude');
 const args = process.argv.slice(2);
 const cmd = args[0] || 'snapshot';
 
+// Per-pane file isolation
+let PANE_ID = '';
+try {
+  PANE_ID = execSync('tmux display-message -p "#{pane_id}"', { encoding: 'utf8' }).trim().replace('%', '');
+} catch {}
+const PANE_SUFFIX = PANE_ID ? `-${PANE_ID}` : '';
+
 if (cmd === 'viewer') {
   console.log('Starting Logged viewer...');
   execSync('node "' + path.join(CLAUDE_DIR, 'log-viewer.js') + '"', { stdio: 'inherit' });
@@ -56,16 +63,16 @@ if (cmd === 'viewer') {
   }
 
   // Force snapshot — reset state and set trigger=manual
-  fs.writeFileSync(path.join(CLAUDE_DIR, 'context-state.json'), '{"lastIndexPct":0}');
+  fs.writeFileSync(path.join(CLAUDE_DIR, `context-state${PANE_SUFFIX}.json`), '{"lastIndexPct":0}');
   execSync('node "' + path.join(CLAUDE_DIR, 'context-manager.js') + '"', {
     stdio: 'inherit',
     env: Object.assign({}, process.env, { LOGGED_TRIGGER: 'manual' })
   });
-  const state = JSON.parse(fs.readFileSync(path.join(CLAUDE_DIR, 'context-state.json'), 'utf8'));
+  const state = JSON.parse(fs.readFileSync(path.join(CLAUDE_DIR, `context-state${PANE_SUFFIX}.json`), 'utf8'));
 
   // Write session.md in cwd — ongoing working context for next session
   try {
-    const reloadContent = fs.readFileSync(path.join(CLAUDE_DIR, 'reload-after-clear.md'), 'utf8');
+    const reloadContent = fs.readFileSync(path.join(CLAUDE_DIR, `reload-after-clear${PANE_SUFFIX}.md`), 'utf8');
     const continueContent = fs.readFileSync(path.join(CLAUDE_DIR, 'logged-continue.md'), 'utf8');
     const sessionMd = reloadContent + '\n' + continueContent;
     fs.writeFileSync(path.join(process.cwd(), 'session.md'), sessionMd);
@@ -74,16 +81,24 @@ if (cmd === 'viewer') {
   console.log('Snapshot taken at ' + state.lastIndexPct + '% context.');
   console.log('MEMORY.md updated, reload file ready, session.md written, daily log appended.');
 
-  // Write trigger file only when called with --cc (from /cc skill)
+  // Write trigger file and fire auto-clear when called with --cc (from /cc skill)
   if (args.includes('--cc')) {
-    fs.writeFileSync(path.join(CLAUDE_DIR, 'auto-clear-trigger'), new Date().toISOString());
-    // Auto-clear: UI Automation finds the correct tab, focuses it, types /clear
-    // Note: Node spawn({ detached: true }) silently fails on Windows/Git Bash,
-    // so we use cmd /c start to launch the background process instead
-    const autoClearScript = path.join(CLAUDE_DIR, 'auto-clear.ps1');
-    require('child_process').exec(
-      `start /b powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File "${autoClearScript}" -Delay 10`,
-      { windowsHide: true, shell: 'cmd.exe' }
-    );
+    fs.writeFileSync(path.join(CLAUDE_DIR, `auto-clear-trigger${PANE_SUFFIX}`), new Date().toISOString());
+
+    // Get our tmux pane address (session:window_index.pane_index)
+    let tmuxTarget = '';
+    try {
+      tmuxTarget = execSync('tmux display-message -p "#{session_name}:#{window_index}.#{pane_index}"', { encoding: 'utf8' }).trim();
+    } catch {}
+
+    if (tmuxTarget) {
+      // tmux: send /clear to our pane after delay
+      // No UI Automation, no focus, no clipboard — just direct pane addressing
+      const delay = 10;
+      require('child_process').exec(
+        `bash -c "sleep ${delay} && MSYS_NO_PATHCONV=1 tmux send-keys -t '${tmuxTarget}' -l '/clear' && tmux send-keys -t '${tmuxTarget}' Enter" &`,
+        { windowsHide: true }
+      );
+    }
   }
 }

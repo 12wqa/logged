@@ -14,7 +14,7 @@ node ~/.claude/logged.js --cc
 
 The --cc flag saves context, writes the trigger file, and fires a delayed keystroke that clears the session automatically.
 
-After the command finishes, say nothing. Do not generate any response text. The auto-clear script handles everything from here.
+After the command finishes, say only "Done" and nothing else.
 
 If context is too low (<15%), tell the user: "Nothing to save yet — just `/clear` directly if you want."
 

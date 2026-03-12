@@ -13,10 +13,17 @@ const { execSync } = require('child_process');
 const HOME = process.env.HOME || process.env.USERPROFILE;
 const CLAUDE_DIR = path.join(HOME, '.claude');
 const STATUS_LOG = path.join(CLAUDE_DIR, 'statusline.log');
-const CONTEXT_STATE = path.join(CLAUDE_DIR, 'context-state.json');
-const RELOAD_FILE = path.join(CLAUDE_DIR, 'reload-after-clear.md');
 const INDEXER = path.join(CLAUDE_DIR, 'session-indexer.js');
 const INDEX_LOG_DIR = path.join(CLAUDE_DIR, 'index-logs');
+
+// Per-pane file isolation — each tmux pane gets its own state files
+let PANE_ID = '';
+try {
+  PANE_ID = execSync('tmux display-message -p "#{pane_id}"', { encoding: 'utf8' }).trim().replace('%', '');
+} catch {}
+const PANE_SUFFIX = PANE_ID ? `-${PANE_ID}` : '';
+const CONTEXT_STATE = path.join(CLAUDE_DIR, `context-state${PANE_SUFFIX}.json`);
+const RELOAD_FILE = path.join(CLAUDE_DIR, `reload-after-clear${PANE_SUFFIX}.md`);
 
 const TRIGGER = process.env.LOGGED_TRIGGER || 'auto';
 
@@ -113,14 +120,15 @@ function saveState(state) {
 }
 
 function fireAutoClear() {
-  // Sequence: Escape (stop Claude) → wait → /cc (definitive save + auto /clear)
-  // Uses UI Automation to target the correct WT tab
-  // Note: spawn({ detached: true }) silently fails on Windows/Git Bash,
-  // so we use cmd /c start to launch the background process instead
-  const script = path.join(CLAUDE_DIR, 'auto-clear-50.ps1');
+  let tmuxTarget = '';
+  try {
+    tmuxTarget = execSync('tmux display-message -p "#{session_name}:#{window_index}.#{pane_index}"', { encoding: 'utf8' }).trim();
+  } catch {}
+  if (!tmuxTarget) return;
+  // tmux: send /cc to our pane (which triggers logged.js --cc → save → /clear)
   require('child_process').exec(
-    `start /b powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File "${script}"`,
-    { windowsHide: true, shell: 'cmd.exe' }
+    `bash -c "MSYS_NO_PATHCONV=1 tmux send-keys -t '${tmuxTarget}' -l '/cc' && tmux send-keys -t '${tmuxTarget}' Enter" &`,
+    { windowsHide: true }
   );
 }
 
