@@ -6,15 +6,19 @@ allowed-tools: Bash
 
 Save the current session context and automatically clear with continuity.
 
-Run this command:
+Run these commands in order:
 
 ```bash
 node ~/.claude/logged.js --cc
 ```
 
-The --cc flag saves context, writes the trigger file, and fires a delayed keystroke that clears the session automatically.
+Then schedule the /clear:
 
-After the command finishes, say only "Done" and nothing else.
+```bash
+sleep 10 && MSYS_NO_PATHCONV=1 tmux send-keys -t "$(tmux display-message -p '#{session_name}:#{window_index}.#{pane_index}')" -l '/clear' && tmux send-keys -t "$(tmux display-message -p '#{session_name}:#{window_index}.#{pane_index}')" C-m &
+```
+
+After both commands finish, say only "Done" and nothing else.
 
 If context is too low (<15%), tell the user: "Nothing to save yet — just `/clear` directly if you want."
 

@@ -85,20 +85,6 @@ if (cmd === 'viewer') {
   if (args.includes('--cc')) {
     fs.writeFileSync(path.join(CLAUDE_DIR, `auto-clear-trigger${PANE_SUFFIX}`), new Date().toISOString());
 
-    // Get our tmux pane address (session:window_index.pane_index)
-    let tmuxTarget = '';
-    try {
-      tmuxTarget = execSync('tmux display-message -p "#{session_name}:#{window_index}.#{pane_index}"', { encoding: 'utf8' }).trim();
-    } catch {}
-
-    if (tmuxTarget) {
-      // tmux: send /clear to our pane after delay
-      // No UI Automation, no focus, no clipboard — just direct pane addressing
-      const delay = 10;
-      require('child_process').exec(
-        `bash -c "sleep ${delay} && MSYS_NO_PATHCONV=1 tmux send-keys -t '${tmuxTarget}' -l '/clear' && tmux send-keys -t '${tmuxTarget}' Enter" &`,
-        { windowsHide: true }
-      );
-    }
+    // /clear is handled by the skill via tmux send-keys
   }
 }
