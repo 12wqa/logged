@@ -21,7 +21,7 @@ const cmd = args[0] || 'snapshot';
 // Per-pane file isolation
 let PANE_ID = '';
 try {
-  PANE_ID = execSync('tmux display-message -p "#{pane_id}"', { encoding: 'utf8' }).trim().replace('%', '');
+  PANE_ID = execSync('tmux display-message -p "#{pane_id}" 2>/dev/null', { encoding: 'utf8' }).trim().replace('%', '');
 } catch {}
 const PANE_SUFFIX = PANE_ID ? `-${PANE_ID}` : '';
 

@@ -19,7 +19,7 @@ const INDEX_LOG_DIR = path.join(CLAUDE_DIR, 'index-logs');
 // Per-pane file isolation — each tmux pane gets its own state files
 let PANE_ID = '';
 try {
-  PANE_ID = execSync('tmux display-message -p "#{pane_id}"', { encoding: 'utf8' }).trim().replace('%', '');
+  PANE_ID = execSync('tmux display-message -p "#{pane_id}" 2>/dev/null', { encoding: 'utf8' }).trim().replace('%', '');
 } catch {}
 const PANE_SUFFIX = PANE_ID ? `-${PANE_ID}` : '';
 const CONTEXT_STATE = path.join(CLAUDE_DIR, `context-state${PANE_SUFFIX}.json`);
@@ -122,7 +122,7 @@ function saveState(state) {
 function fireAutoClear() {
   let tmuxTarget = '';
   try {
-    tmuxTarget = execSync('tmux display-message -p "#{session_name}:#{window_index}.#{pane_index}"', { encoding: 'utf8' }).trim();
+    tmuxTarget = execSync('tmux display-message -p "#{session_name}:#{window_index}.#{pane_index}" 2>/dev/null', { encoding: 'utf8' }).trim();
   } catch {}
   if (!tmuxTarget) return;
   // tmux: send /cc to our pane (which triggers logged.js --cc → save → /clear)

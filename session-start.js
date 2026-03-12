@@ -24,7 +24,7 @@ const CONTINUE_FILE = path.join(CLAUDE_DIR, 'logged-continue.md');
 // Per-pane file isolation — match the pane ID used by logged.js/context-manager.js
 let PANE_ID = '';
 try {
-  PANE_ID = require('child_process').execSync('tmux display-message -p "#{pane_id}"', { encoding: 'utf8' }).trim().replace('%', '');
+  PANE_ID = require('child_process').execSync('tmux display-message -p "#{pane_id}" 2>/dev/null', { encoding: 'utf8' }).trim().replace('%', '');
 } catch {}
 const PANE_SUFFIX = PANE_ID ? `-${PANE_ID}` : '';
 const TRIGGER_FILE = path.join(CLAUDE_DIR, `auto-clear-trigger${PANE_SUFFIX}`);
