@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Logged — Context Manager for Claude Code
 // Seamless context management — the user never thinks about context.
-// Silently indexes in the background, updates MEMORY.md, keeps reload file fresh.
-// After /clear, Claude picks up from MEMORY.md automatically. No friction.
+// Silently indexes in the background, updates session.md, keeps reload file fresh.
+// Auto-clears at 50% — stop → /cc → /clear → SessionStart reloads context.
 //
 // Trigger source passed via env: LOGGED_TRIGGER=manual|auto (default: auto)
 
@@ -20,78 +20,12 @@ const INDEX_LOG_DIR = path.join(CLAUDE_DIR, 'index-logs');
 
 const TRIGGER = process.env.LOGGED_TRIGGER || 'auto';
 
-// --- MEMORY.md auto-update ---
-
-const SESSION_MARKER = '\n<!-- SESSION-STATE-AUTO -->';
-
-function findMemoryMd(sessionFile) {
-  if (sessionFile) {
-    // Derive MEMORY.md from the session file's project directory
-    const projectDir = path.dirname(sessionFile);
-    const memFile = path.join(projectDir, 'memory', 'MEMORY.md');
-    try { fs.statSync(memFile); return memFile; } catch {}
-  }
-  // Fallback: find newest (for manual triggers without a session)
-  const projectsDir = path.join(CLAUDE_DIR, 'projects');
-  let newest = null;
-  let newestTime = 0;
-  try {
-    for (const entry of fs.readdirSync(projectsDir, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      const memFile = path.join(projectsDir, entry.name, 'memory', 'MEMORY.md');
-      try {
-        const stat = fs.statSync(memFile);
-        if (stat.mtimeMs > newestTime) {
-          newestTime = stat.mtimeMs;
-          newest = memFile;
-        }
-      } catch {}
-    }
-  } catch {}
-  return newest;
-}
-
-function updateMemoryMd(indexOutput, contextPct, trigger, sessionFile) {
-  const memFile = findMemoryMd(sessionFile);
-  if (!memFile) return;
-
-  try {
-    let content = fs.readFileSync(memFile, 'utf8');
-
-    const indexLines = indexOutput.split('\n')
-      .filter(l => l.includes('USER') || l.includes('CLAUDE'))
-      .slice(-15);
-
-    const sessionSection = [
-      SESSION_MARKER,
-      '## Current Session',
-      `_Updated: ${new Date().toISOString()} | Context: ${contextPct}% | Trigger: ${trigger}_`,
-      '',
-      ...indexLines,
-      '',
-      '_Full history: `node ~/.claude/session-indexer.js --latest --last 30`_',
-      '<!-- /SESSION-STATE-AUTO -->'
-    ].join('\n');
-
-    if (content.includes(SESSION_MARKER)) {
-      content = content.replace(
-        /\n<!-- SESSION-STATE-AUTO -->[\s\S]*<!-- \/SESSION-STATE-AUTO -->/,
-        sessionSection
-      );
-    } else {
-      content = content.trimEnd() + '\n' + sessionSection + '\n';
-    }
-
-    if (content.split('\n').length <= 200) {
-      fs.writeFileSync(memFile, content);
-    }
-  } catch {}
-}
-
 // --- Core functions ---
 
 const INDEX_INTERVAL_PCT = 5;
 const INDEX_START_PCT = 15;
+const AUTO_CLEAR_PCT = 50;
+
 function getContextPct() {
   try {
     const log = fs.readFileSync(STATUS_LOG, 'utf8');
@@ -142,22 +76,28 @@ function runIndexer(sessionFile, lastMins) {
 function writeReloadFile(indexOutput, contextPct, trigger) {
   const content = `# Session Continuity
 # Generated: ${new Date().toISOString()} | Context: ${contextPct}% | Trigger: ${trigger}
-# This file exists so /clear is seamless. Just keep working.
 
-## Recent activity (last 15 mins):
+## Recent activity (last 30 mins):
 
 \`\`\`
 ${indexOutput}
 \`\`\`
 
 ## To go deeper:
-# node ~/.claude/session-indexer.js --latest --last 30
-# node ~/.claude/session-indexer.js --latest --last 60
-
-## Full index history:
-# ~/.claude/index-logs/    (one file per day, all sessions)
+# node ~/.claude/session-indexer.js --previous --last 30
+# node ~/.claude/session-indexer.js --previous --last 60
 `;
   fs.writeFileSync(RELOAD_FILE, content);
+}
+
+function writeSessionMd(indexOutput, contextPct) {
+  try {
+    const continueFile = path.join(CLAUDE_DIR, 'logged-continue.md');
+    const continueContent = fs.existsSync(continueFile) ? fs.readFileSync(continueFile, 'utf8') : '';
+    const sessionMd = `# Session Continuity\n# Updated: ${new Date().toISOString()} | Context: ${contextPct}%\n\n` +
+      '## Recent activity (last 30 mins):\n\n```\n' + indexOutput + '\n```\n\n' + continueContent;
+    fs.writeFileSync(path.join(process.cwd(), 'session.md'), sessionMd);
+  } catch {}
 }
 
 function getState() {
@@ -172,6 +112,18 @@ function saveState(state) {
   fs.writeFileSync(CONTEXT_STATE, JSON.stringify(state));
 }
 
+function fireAutoClear() {
+  // Sequence: Escape (stop Claude) → wait → /cc (definitive save + auto /clear)
+  // Uses UI Automation to target the correct WT tab
+  // Note: spawn({ detached: true }) silently fails on Windows/Git Bash,
+  // so we use cmd /c start to launch the background process instead
+  const script = path.join(CLAUDE_DIR, 'auto-clear-50.ps1');
+  require('child_process').exec(
+    `start /b powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File "${script}"`,
+    { windowsHide: true, shell: 'cmd.exe' }
+  );
+}
+
 // --- Main — silent, seamless ---
 
 const pct = getContextPct();
@@ -182,10 +134,10 @@ const state = getState();
 if (pct - state.lastIndexPct >= INDEX_INTERVAL_PCT) {
   const session = findLatestSession();
   if (session) {
-    const index = runIndexer(session, 15);
+    const index = runIndexer(session, 30);
     if (index) {
       writeReloadFile(index, pct, TRIGGER);
-      updateMemoryMd(index, pct, TRIGGER, session);
+      writeSessionMd(index, pct);
 
       try {
         fs.mkdirSync(INDEX_LOG_DIR, { recursive: true });
@@ -199,8 +151,21 @@ if (pct - state.lastIndexPct >= INDEX_INTERVAL_PCT) {
         ].join('');
         fs.appendFileSync(logFile, entry);
       } catch {}
+
+      // At threshold: fire stop → /cc → /clear chain
+      if (pct >= AUTO_CLEAR_PCT && !state.autoClearFired) {
+        fireAutoClear();
+        state.autoClearFired = true;
+      }
     }
   }
   state.lastIndexPct = pct;
+  state.previousSessionFile = session;
   saveState(state);
+
+  // Reset autoClearFired flag when context drops (new session after clear)
+  if (pct < AUTO_CLEAR_PCT) {
+    state.autoClearFired = false;
+    saveState(state);
+  }
 }

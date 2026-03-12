@@ -62,6 +62,28 @@ if (cmd === 'viewer') {
     env: Object.assign({}, process.env, { LOGGED_TRIGGER: 'manual' })
   });
   const state = JSON.parse(fs.readFileSync(path.join(CLAUDE_DIR, 'context-state.json'), 'utf8'));
+
+  // Write session.md in cwd — ongoing working context for next session
+  try {
+    const reloadContent = fs.readFileSync(path.join(CLAUDE_DIR, 'reload-after-clear.md'), 'utf8');
+    const continueContent = fs.readFileSync(path.join(CLAUDE_DIR, 'logged-continue.md'), 'utf8');
+    const sessionMd = reloadContent + '\n' + continueContent;
+    fs.writeFileSync(path.join(process.cwd(), 'session.md'), sessionMd);
+  } catch {}
+
   console.log('Snapshot taken at ' + state.lastIndexPct + '% context.');
-  console.log('MEMORY.md updated, reload file ready, daily log appended.');
+  console.log('MEMORY.md updated, reload file ready, session.md written, daily log appended.');
+
+  // Write trigger file only when called with --cc (from /cc skill)
+  if (args.includes('--cc')) {
+    fs.writeFileSync(path.join(CLAUDE_DIR, 'auto-clear-trigger'), new Date().toISOString());
+    // Auto-clear: UI Automation finds the correct tab, focuses it, types /clear
+    // Note: Node spawn({ detached: true }) silently fails on Windows/Git Bash,
+    // so we use cmd /c start to launch the background process instead
+    const autoClearScript = path.join(CLAUDE_DIR, 'auto-clear.ps1');
+    require('child_process').exec(
+      `start /b powershell.exe -WindowStyle Hidden -ExecutionPolicy Bypass -File "${autoClearScript}" -Delay 10`,
+      { windowsHide: true, shell: 'cmd.exe' }
+    );
+  }
 }
